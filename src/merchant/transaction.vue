@@ -12,9 +12,7 @@
           </div>
           <div>
             <h2 class="text-3xl font-semibold tracking-tight text-slate-900">Transaction Dashboard</h2>
-            <p class="mt-2 max-w-2xl text-sm text-slate-500">
-              Overview of inquiry, transfer, and merchant activity across the portal.
-            </p>
+            
           </div>
         </div>
 
@@ -51,10 +49,10 @@
                 LMPS Transaction Count
               </p>
               <h3 class="max-w-[15rem] text-sm font-medium leading-6 text-slate-500">
-                Total transaction Count (LMPS)
+                Today's transaction Count (LMPS)
               </h3>
             </div>
-            <div class="flex min-w-[4.75rem] shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-sky-500 via-blue-500 to-cyan-500 px-3 py-4 text-sm font-semibold text-white shadow-[0_12px_28px_rgba(37,99,235,0.28)] ring-1 ring-white/70">
+            <div class="flex min-w-[4.75rem] shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-sky-500 via-blue-500 to-cyan-500 px-3 py-4 text-4xl font-black text-white shadow-[0_12px_28px_rgba(37,99,235,0.28)] ring-1 ring-white/70">
               {{ lmpsTodayCardsLoading ? "Loading" : formatRank(lmpsTotalCountRank) }}
             </div>
           </div>
@@ -81,10 +79,10 @@
                 LMPS Amount
               </p>
               <h3 class="max-w-[15rem] text-sm font-medium leading-6 text-slate-500">
-                Total transaction amount (LMPS)
+                Today's transaction amount (LMPS)
               </h3>
             </div>
-            <div class="flex min-w-[4.75rem] shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 via-violet-500 to-blue-600 px-3 py-4 text-sm font-semibold text-white shadow-[0_12px_28px_rgba(79,70,229,0.28)] ring-1 ring-white/70">
+            <div class="flex min-w-[4.75rem] shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 via-violet-500 to-blue-600 px-3 py-4 text-4xl font-black text-white shadow-[0_12px_28px_rgba(79,70,229,0.28)] ring-1 ring-white/70">
               {{ lmpsTodayCardsLoading ? "Loading" : formatRank(lmpsTotalAmountRank) }}
             </div>
           </div>
@@ -323,7 +321,7 @@
 
 <script>
 import VueApexCharts from "vue3-apexcharts";
-import { ref, onMounted, onBeforeUnmount, computed, nextTick } from "vue";
+import { ref, onMounted, onBeforeUnmount, computed, nextTick, watch } from "vue";
 import axios from "axios";
 import * as echarts from "echarts";
 import { gsap } from "gsap";
@@ -375,6 +373,8 @@ export default {
     let monthlyChartTween = null;
     let monthlyRealtimeTimer = null;
     let monthlyChartRequestId = 0;
+    let yearlyOverviewLoadRequestId = 0;
+    let yearlyOverviewSummaryRequestId = 0;
     let monthlyChartRows = [];
     let monthlyChartHoverIndex = null;
     let lastTransferTodaySnapshot = null;
@@ -406,6 +406,7 @@ export default {
     ];
     const inMemoryCache = new Map();
     const pendingRequests = new Map();
+    const yearlyRankingScopeCache = Object.create(null);
 
     const monthLabels = [
       "Jan",
@@ -421,6 +422,24 @@ export default {
       "Nov",
       "Dec",
     ];
+    const monthLabelLookup = monthLabels.reduce((lookup, label, index) => {
+      const normalizedLabel = String(label || "").toLowerCase();
+      lookup[normalizedLabel] = index + 1;
+      return lookup;
+    }, {
+      january: 1,
+      february: 2,
+      march: 3,
+      april: 4,
+      may: 5,
+      june: 6,
+      july: 7,
+      august: 8,
+      september: 9,
+      october: 10,
+      november: 11,
+      december: 12,
+    });
     const getCurrentDisplayMonthNumber = () => new Date().getMonth() + 1;
     const getYearScopeMonthLimit = () => Math.max(1, Math.min(12, getCurrentDisplayMonthNumber()));
     const buildYearScopeBaseRows = () =>
@@ -673,6 +692,14 @@ export default {
       return Number.isFinite(num) ? num : 0;
     };
 
+    const resolveSelectedRankingYear = () =>
+      Math.floor(toSafeNumber(currentYear.value)) || new Date().getFullYear();
+
+    const resolveSelectedRankingMonth = () => {
+      const month = Math.floor(toSafeNumber(selectedRankingMonth.value));
+      return month >= 1 && month <= 12 ? month : new Date().getMonth() + 1;
+    };
+
     const readPath = (source, path) =>
       path.reduce(
         (value, key) =>
@@ -696,6 +723,61 @@ export default {
     const normalizeBankcode = (value) => {
       const normalized = String(value || "").trim();
       return normalized ? normalized.toUpperCase() : "";
+    };
+
+    const getYearlyRankingScopeCacheKey = ({
+      year = resolveSelectedRankingYear(),
+      bankcode = userBankcode.value,
+    } = {}) =>
+      `${Math.floor(toSafeNumber(year)) || new Date().getFullYear()}:${
+        normalizeBankcode(bankcode) || "unknown"
+      }`;
+
+    const getCachedYearlyRankingScope = (options = {}) => {
+      const cacheKey = getYearlyRankingScopeCacheKey(options);
+      return Object.prototype.hasOwnProperty.call(yearlyRankingScopeCache, cacheKey)
+        ? yearlyRankingScopeCache[cacheKey]
+        : null;
+    };
+
+    const setCachedYearlyRankingScope = (scopeData, options = {}) => {
+      const cacheKey = getYearlyRankingScopeCacheKey(options);
+      yearlyRankingScopeCache[cacheKey] = scopeData;
+      return scopeData;
+    };
+
+    const inferMonthNumber = (value) => {
+      const rawValue = String(value || "").trim();
+      if (!rawValue) return 0;
+
+      const normalizedValue = rawValue.toLowerCase();
+
+      for (const [label, monthNumber] of Object.entries(monthLabelLookup)) {
+        if (normalizedValue.includes(label)) {
+          return monthNumber;
+        }
+      }
+
+      const parsedDate = new Date(rawValue);
+      if (!Number.isNaN(parsedDate.getTime())) {
+        return parsedDate.getMonth() + 1;
+      }
+
+      const yearMonthMatch =
+        rawValue.match(/\b\d{4}[-/](0?[1-9]|1[0-2])(?:[-/]\d{1,2})?\b/) ||
+        rawValue.match(/\b(0?[1-9]|1[0-2])[-/]\d{4}\b/);
+
+      if (yearMonthMatch) {
+        const candidates = yearMonthMatch[0].match(/\d+/g) || [];
+        const inferredMonth = candidates.find((candidate) => {
+          const normalizedMonth = Number(candidate);
+          return normalizedMonth >= 1 && normalizedMonth <= 12;
+        });
+
+        return inferredMonth ? Number(inferredMonth) : 0;
+      }
+
+      return 0;
     };
 
     const toPositiveInteger = (value) => {
@@ -1065,7 +1147,23 @@ export default {
       const normalizedBankcode = normalizeBankcode(context.bankcode || userBankcode.value);
       const sourceRows = extractRankingRows(payload)
         .map((entry, index) => normalizeRankingEntry(entry, index))
-        .filter((row) => !normalizedBankcode || row.bankCode === normalizedBankcode);
+        .filter((row) => !normalizedBankcode || row.bankCode === normalizedBankcode)
+        .map((row, index) => {
+          if (context.period !== "year" || row.month > 0) {
+            return row;
+          }
+
+          const inferredMonth = inferMonthNumber(row.rawLabel);
+          if (inferredMonth < 1 || inferredMonth > getYearScopeMonthLimit()) {
+            return row;
+          }
+
+          return {
+            ...row,
+            month: inferredMonth,
+            sortOrder: inferredMonth || row.sortOrder || index + 1,
+          };
+        });
       const rows = buildScopeRowsFromNormalized(sourceRows, context);
 
       return {
@@ -1171,7 +1269,7 @@ export default {
     const getRankingScopeCacheKey = (context = monthlyChartContext) =>
       buildCacheKey(
         "stacked-ranking-scope",
-        `${currentYear.value}:${context.period}:${
+        `${resolveSelectedRankingYear()}:${context.period}:${
           context.period === "year" ? "all" : context.month || "all"
         }:${context.bankcode || "unknown"}`
       );
@@ -1191,12 +1289,17 @@ export default {
         };
       }
 
+      const params = {
+        year: resolveSelectedRankingYear(),
+      };
+
+      if (context.period === "month" && context.month) {
+        params.month = context.month;
+      }
+
       return {
         url: `${apiBase2}/transfer/ranked-bankcodes-by-year`,
-        params:
-          context.period === "month" && context.month
-            ? { month: context.month }
-            : {},
+        params,
       };
     };
 
@@ -1227,12 +1330,14 @@ export default {
         bankcode: context.bankcode,
         month: 0,
       });
-      const cachedYear = getCachedData(
-        getRankingScopeCacheKey(yearContext),
-        getRankingScopeTtlMs("year")
-      );
-      const yearSourceRows = Array.isArray(cachedYear.data?.sourceRows)
-        ? cachedYear.data.sourceRows
+      const cachedYearScopeData =
+        getCachedYearlyRankingScope({
+          year: resolveSelectedRankingYear(),
+          bankcode: context.bankcode,
+        }) ||
+        getCachedData(getRankingScopeCacheKey(yearContext), getRankingScopeTtlMs("year")).data;
+      const yearSourceRows = Array.isArray(cachedYearScopeData?.sourceRows)
+        ? cachedYearScopeData.sourceRows
         : [];
 
       if (!yearSourceRows.length || !yearSourceRows.some((row) => row.month === context.month)) {
@@ -1259,7 +1364,11 @@ export default {
         const context = getRankingScopeContext({ period: "year", month: 0 });
         if (!context.bankcode) return;
 
-        await fetchRankingScopeData(context, false);
+        const scopeData = await fetchRankingScopeData(context, false);
+        setCachedYearlyRankingScope(scopeData, {
+          year: resolveSelectedRankingYear(),
+          bankcode: context.bankcode,
+        });
       } catch (error) {
         console.error("Error priming year ranking scope cache:", error);
       }
@@ -1368,61 +1477,6 @@ export default {
           lmpsTodayCardsLoading.value = false;
         }
       }
-    };
-
-    const mergeTodaySnapshotIntoYearScope = (scopeData = {}, todaySnapshot = null) => {
-      const currentMonth = getCurrentDisplayMonthNumber();
-      const baseRows =
-        Array.isArray(scopeData?.rows) && scopeData.rows.length
-          ? normalizeMonthlyRows(
-              scopeData.rows,
-              getRankingScopeContext({ period: "year", month: 0 })
-            )
-          : buildYearScopeBaseRows();
-      const rows = baseRows.map((row) => ({ ...row }));
-      const currentMonthRow =
-        rows[currentMonth - 1] ||
-        createEmptyScopeRow({
-          label: monthLabels[currentMonth - 1],
-          month: currentMonth,
-          sortOrder: currentMonth,
-        });
-
-      if (todaySnapshot?.row) {
-        const mergedCurrentMonthRow = mergeScopeRow(currentMonthRow, {
-          ...todaySnapshot.row,
-          label: monthLabels[currentMonth - 1],
-          month: currentMonth,
-          sortOrder: currentMonth,
-        });
-
-        [
-          "rankFromCount",
-          "rankToCount",
-          "rankTotalCount",
-          "rankFromAmount",
-          "rankToAmount",
-          "rankTotalAmount",
-        ].forEach((key) => {
-          const latestRank = toPositiveInteger(todaySnapshot.row?.[key]);
-          if (latestRank > 0) {
-            mergedCurrentMonthRow[key] = latestRank;
-          }
-        });
-
-        rows[currentMonth - 1] = {
-          ...mergedCurrentMonthRow,
-          label: monthLabels[currentMonth - 1],
-          month: currentMonth,
-          sortOrder: currentMonth,
-        };
-      }
-
-      return {
-        ...scopeData,
-        rows,
-        summary: buildScopeSummary(rows),
-      };
     };
 
     const chartGradientCount = () =>
@@ -2008,8 +2062,15 @@ export default {
 
         const cacheKey = getRankingScopeCacheKey(context);
         const cached = getCachedData(cacheKey, getRankingScopeTtlMs(context.period));
+        const cachedYearScopeData =
+          context.period === "year"
+            ? getCachedYearlyRankingScope({
+                year: resolveSelectedRankingYear(),
+                bankcode: context.bankcode,
+              })
+            : null;
         const derivedScopeData = !cached.data ? deriveMonthScopeFromYearCache(context) : null;
-        const previewScopeData = cached.data || derivedScopeData;
+        const previewScopeData = cachedYearScopeData || cached.data || derivedScopeData;
 
         transferLoading.value = !hasMonthlyChartRows(previewScopeData?.rows);
 
@@ -2029,6 +2090,12 @@ export default {
           context,
           forceRefresh || !cached.isFresh || !cached.data
         );
+        if (context.period === "year") {
+          setCachedYearlyRankingScope(scopeData, {
+            year: resolveSelectedRankingYear(),
+            bankcode: context.bankcode,
+          });
+        }
 
         await nextTick();
         if (requestId !== monthlyChartRequestId) return;
@@ -2064,6 +2131,59 @@ export default {
       }
     };
 
+    const fetchYearlyOverviewMonthlySummary = async ({ forceRefresh = false } = {}) => {
+      const requestId = ++yearlyOverviewSummaryRequestId;
+
+      try {
+        const context = getRankingScopeContext({
+          period: "month",
+          month: resolveSelectedRankingMonth(),
+        });
+        if (!context.bankcode) return;
+
+        const cacheKey = getRankingScopeCacheKey(context);
+        const cached = getCachedData(cacheKey, getRankingScopeTtlMs("month"));
+
+        if (cached.data) {
+          applyRankingScopeSummary(cached.data);
+        }
+
+        const scopeData = await fetchRankingScopeData(
+          context,
+          forceRefresh || !cached.isFresh || !cached.data
+        );
+
+        if (requestId !== yearlyOverviewSummaryRequestId) return;
+        applyRankingScopeSummary(scopeData);
+      } catch (error) {
+        if (requestId !== yearlyOverviewSummaryRequestId) return;
+        console.error("Error fetching yearly overview monthly summary:", error);
+      }
+    };
+
+    const loadYearlyOverview = async ({
+      forceYearRefresh = false,
+      forceMonthRefresh = false,
+      showLoading = true,
+      animate = false,
+    } = {}) => {
+      const requestId = ++yearlyOverviewLoadRequestId;
+
+      await fetchMonthlyTransferScope({
+        period: "year",
+        month: 0,
+        forceRefresh: forceYearRefresh,
+        showLoading,
+        animate,
+      });
+
+      if (requestId !== yearlyOverviewLoadRequestId) return;
+
+      await fetchYearlyOverviewMonthlySummary({
+        forceRefresh: forceMonthRefresh,
+      });
+    };
+
     const fetchDailyCounts = async () => {
       chartLoading.value = true;
       try {
@@ -2091,11 +2211,11 @@ export default {
           forceRefresh: !cached.isFresh,
           requestFn: async () => {
             const [inquiryRes, transferRes] = await Promise.all([
-              axios.get(`${apiBase1}/inquiry/daily-count`, {
+              axios.get(`${apiBase2}/inquiry/daily-count`, {
                 ...getAuthConfig(),
                 params: { bankcode },
               }),
-              axios.get(`${apiBase1}/transfer/daily-count`, {
+              axios.get(`${apiBase2}/transfer/daily-count`, {
                 ...getAuthConfig(),
                 params: { bankcode },
               }),
@@ -2154,44 +2274,31 @@ export default {
         applyLmpsTodayCardSnapshot(latestTodaySnapshot);
         lmpsTodayCardsLoading.value = false;
 
-        if (
-          lastTransferTodaySnapshot &&
-          !hasTransferTodaySnapshotChanged(lastTransferTodaySnapshot, latestTodaySnapshot)
-        ) {
+        const todaySnapshotChanged = hasTransferTodaySnapshotChanged(
+          lastTransferTodaySnapshot,
+          latestTodaySnapshot
+        );
+        lastTransferTodaySnapshot = latestTodaySnapshot;
+
+        if (!todaySnapshotChanged) {
           return;
         }
 
-        const yearContext = getRankingScopeContext({ period: "year", month: 0 });
-        const yearCacheKey = getRankingScopeCacheKey(yearContext);
-        const cachedYearScope = getCachedData(
-          yearCacheKey,
-          getRankingScopeTtlMs("year")
-        ).data;
-        const fallbackRows = normalizeMonthlyRows(monthlyChartRows, yearContext);
-        const baseYearScope =
-          cachedYearScope && Array.isArray(cachedYearScope.rows) && cachedYearScope.rows.length
-            ? cachedYearScope
-            : {
-                rows: fallbackRows,
-                summary: buildScopeSummary(fallbackRows),
-              };
-        const mergedYearScope = mergeTodaySnapshotIntoYearScope(
-          baseYearScope,
-          latestTodaySnapshot
-        );
+        const activeContext = getRankingScopeContext({
+          period: activeRankingScope.value,
+          month: activeRankingScope.value === "month" ? selectedRankingMonth.value : 0,
+        });
 
-        applyRankingScopeSummary(mergedYearScope);
-        if (animate) {
-          animateMonthlyChartRows(mergedYearScope.rows, yearContext);
-        } else {
-          renderMonthlyBarChart(mergedYearScope.rows, null, { context: yearContext });
+        await fetchMonthlyTransferScope({
+          period: activeContext.period,
+          month: activeContext.period === "month" ? activeContext.month : 0,
+          forceRefresh: true,
+          showLoading: false,
+          animate,
+        });
+        if (activeContext.period === "year") {
+          await fetchYearlyOverviewMonthlySummary({ forceRefresh: true });
         }
-        monthlyChartError.value = "";
-        monthlyChartInitialized.value = true;
-        monthlyChartContext = yearContext;
-        monthlyChartLoading.value = false;
-        transferLoading.value = false;
-        lastTransferTodaySnapshot = latestTodaySnapshot;
       } catch (error) {
         console.error("Error refreshing transfer dashboard:", error);
       }
@@ -2212,9 +2319,38 @@ export default {
       scheduleMonthlyRealtimeRefresh();
     };
 
-    const handleRankingScopeChange = async () => {};
+    const handleRankingScopeChange = async () => {
+      if (activeRankingScope.value === "year") {
+        await loadYearlyOverview({
+          showLoading: true,
+          animate: true,
+        });
+        return;
+      }
 
-    const handleRankingMonthChange = async () => {};
+      await fetchMonthlyTransferScope({
+        period: activeRankingScope.value,
+        month: activeRankingScope.value === "month" ? resolveSelectedRankingMonth() : 0,
+        showLoading: true,
+        animate: true,
+      });
+    };
+
+    const handleRankingMonthChange = async () => {
+      if (activeRankingScope.value === "year") {
+        await fetchYearlyOverviewMonthlySummary();
+        return;
+      }
+
+      if (activeRankingScope.value === "month") {
+        await fetchMonthlyTransferScope({
+          period: "month",
+          month: resolveSelectedRankingMonth(),
+          showLoading: true,
+          animate: true,
+        });
+      }
+    };
 
     const fetchTotalMembers = async () => {
       try {
@@ -2370,6 +2506,43 @@ export default {
       tooltip: { enabled: true },
     });
 
+    watch(currentYear, async (nextYear, previousYear) => {
+      if (Number(nextYear) === Number(previousYear)) return;
+
+      if (activeRankingScope.value === "year") {
+        await loadYearlyOverview({
+          showLoading: true,
+          animate: true,
+        });
+        return;
+      }
+
+      await fetchMonthlyTransferScope({
+        period: activeRankingScope.value,
+        month: activeRankingScope.value === "month" ? resolveSelectedRankingMonth() : 0,
+        showLoading: true,
+        animate: true,
+      });
+    });
+
+    watch(selectedRankingMonth, async (nextMonth, previousMonth) => {
+      if (Number(nextMonth) === Number(previousMonth)) return;
+
+      if (activeRankingScope.value === "year") {
+        await fetchYearlyOverviewMonthlySummary();
+        return;
+      }
+
+      if (activeRankingScope.value === "month") {
+        await fetchMonthlyTransferScope({
+          period: "month",
+          month: resolveSelectedRankingMonth(),
+          showLoading: true,
+          animate: true,
+        });
+      }
+    });
+
     onMounted(async () => {
       await nextTick();
 
@@ -2381,9 +2554,8 @@ export default {
         showLoading: true,
         forceRefresh: true,
       });
-      await fetchMonthlyTransferScope({
-        period: "year",
-        month: 0,
+      await loadYearlyOverview({
+        showLoading: true,
       });
       await lmpsTodayCardsPromise;
 
