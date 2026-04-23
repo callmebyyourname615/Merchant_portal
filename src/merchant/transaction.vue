@@ -54,18 +54,14 @@
                 Total transaction Count (LMPS)
               </h3>
             </div>
-            <div class="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-sky-500 via-blue-500 to-cyan-500 shadow-[0_12px_28px_rgba(37,99,235,0.28)] ring-1 ring-white/70">
-              <img
-                src="/fontawesome/arrow-down-box-fill.svg"
-                alt="Transaction inquiry icon"
-                class="h-7 w-7 invert brightness-0"
-              />
+            <div class="flex min-w-[4.75rem] shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-sky-500 via-blue-500 to-cyan-500 px-3 py-4 text-sm font-semibold text-white shadow-[0_12px_28px_rgba(37,99,235,0.28)] ring-1 ring-white/70">
+              {{ lmpsTodayCardsLoading ? "Loading" : formatRank(lmpsTotalCountRank) }}
             </div>
           </div>
 
           <div class="flex items-end justify-between gap-4">
             <p class="text-3xl font-semibold tracking-tight text-slate-900 sm:text-[2rem]">
-              {{ formatCount(totalInquiryTransaction) }}
+              {{ lmpsTodayCardsLoading ? "Loading..." : formatCount(lmpsTotalCount) }}
             </p>
             <span class="rounded-full bg-sky-50 px-3 py-1 text-[11px] font-semibold text-sky-700">
               Count
@@ -88,18 +84,14 @@
                 Total transaction amount (LMPS)
               </h3>
             </div>
-            <div class="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 via-violet-500 to-blue-600 shadow-[0_12px_28px_rgba(79,70,229,0.28)] ring-1 ring-white/70">
-              <img
-                src="/fontawesome/money-bill-transfer-solid-full.svg"
-                alt="Transaction transfer icon"
-                class="h-7 w-7 invert brightness-0"
-              />
+            <div class="flex min-w-[4.75rem] shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 via-violet-500 to-blue-600 px-3 py-4 text-sm font-semibold text-white shadow-[0_12px_28px_rgba(79,70,229,0.28)] ring-1 ring-white/70">
+              {{ lmpsTodayCardsLoading ? "Loading" : formatRank(lmpsTotalAmountRank) }}
             </div>
           </div>
 
           <div class="flex items-end justify-between gap-4">
             <p class="text-3xl font-semibold tracking-tight text-slate-900 sm:text-[1.5rem]">
-              {{ transferLoading ? "Loading..." : formatAmount(totalTransferTransaction) }}
+              {{ lmpsTodayCardsLoading ? "Loading..." : formatAmount(lmpsTotalAmount) }}
             </p>
             <span class="rounded-full bg-indigo-50 px-3 py-1 text-[11px] font-semibold text-indigo-700">
               Amount
@@ -195,42 +187,12 @@
           </div>
 
           <div class="flex flex-col items-start gap-3 lg:items-end">
-            <div class="inline-flex items-center rounded-full border border-slate-200 bg-white/90 p-1 shadow-sm">
-              <button
-                v-for="option in rankingScopeOptions"
-                :key="option.key"
-                type="button"
-                class="rounded-full px-3 py-1.5 text-xs font-semibold transition-all duration-200"
-                :class="
-                  activeRankingScope === option.key
-                    ? 'bg-slate-900 text-white shadow-sm'
-                    : 'text-slate-500 hover:bg-slate-100 hover:text-slate-700'
-                "
-                @click="handleRankingScopeChange(option.key)"
-              >
-                {{ option.label }}
-              </button>
+            <div class="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/90 px-3 py-2 text-xs font-semibold text-slate-600 shadow-sm">
+              <span class="h-2.5 w-2.5 rounded-full bg-emerald-400"></span>
+              <span>{{ currentYearRangeLabel }}</span>
+              <span class="text-slate-300">|</span>
+              <span>{{ currentYear }}</span>
             </div>
-
-            <label
-              v-if="activeRankingScope === 'month'"
-              class="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/90 px-3 py-2 text-xs font-medium text-slate-500 shadow-sm"
-            >
-              <span>Month</span>
-              <select
-                v-model="selectedRankingMonth"
-                class="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700 outline-none"
-                @change="handleRankingMonthChange"
-              >
-                <option
-                  v-for="(label, index) in monthLabels"
-                  :key="label"
-                  :value="index + 1"
-                >
-                  {{ label }}
-                </option>
-              </select>
-            </label>
           </div>
         </div>
 
@@ -365,6 +327,7 @@ import { ref, onMounted, onBeforeUnmount, computed, nextTick } from "vue";
 import axios from "axios";
 import * as echarts from "echarts";
 import { gsap } from "gsap";
+import { buildApiUrl } from "@/config/api";
 
 export default {
   components: {
@@ -377,19 +340,25 @@ export default {
     const monthlyChartLoading = ref(true);
     const monthlyChartInitialized = ref(false);
     const monthlyChartError = ref("");
-    const activeRankingScope = ref("today");
+    const activeRankingScope = ref("year");
     const selectedRankingMonth = ref(new Date().getMonth() + 1);
     const totalMembers = ref(0);
     const totalInquiryTransaction = ref(0);
     const totalMerchantInactive = ref(0);
     const totalTransferTransaction = ref(0);
+    const lmpsTotalCount = ref(0);
+    const lmpsTotalAmount = ref(0);
+    const lmpsTotalCountRank = ref(0);
+    const lmpsTotalAmountRank = ref(0);
+    const lmpsTodayCardsLoading = ref(true);
 
     const userRole = computed(() => (localStorage.getItem("role") || "").toLowerCase());
     const userBankcode = computed(() =>
       (localStorage.getItem("bankcode") || "").toUpperCase().trim()
     );
 
-    const apiUrl = import.meta.env.VITE_API_URL || "/api";
+    const apiBase1 = buildApiUrl("/api", "base1");
+    const apiBase2 = buildApiUrl("/api", "base2");
     const dailyLineChartRef = ref(null);
     const monthlyBarChartRef = ref(null);
     const currentYear = ref(new Date().getFullYear());
@@ -408,7 +377,7 @@ export default {
     let monthlyChartRequestId = 0;
     let monthlyChartRows = [];
     let monthlyChartHoverIndex = null;
-    let lastTransferTodaySummary = null;
+    let lastTransferTodaySnapshot = null;
     let monthlyChartContext = {
       period: activeRankingScope.value,
       month: selectedRankingMonth.value,
@@ -452,6 +421,16 @@ export default {
       "Nov",
       "Dec",
     ];
+    const getCurrentDisplayMonthNumber = () => new Date().getMonth() + 1;
+    const getYearScopeMonthLimit = () => Math.max(1, Math.min(12, getCurrentDisplayMonthNumber()));
+    const buildYearScopeBaseRows = () =>
+      Array.from({ length: getYearScopeMonthLimit() }, (_, index) =>
+        createEmptyScopeRow({
+          label: monthLabels[index],
+          month: index + 1,
+          sortOrder: index + 1,
+        })
+      );
     const rankingScopeOptions = [
       { key: "today", label: "Today" },
       { key: "month", label: "Month" },
@@ -784,31 +763,18 @@ export default {
       return "Today Overview";
     });
 
+    const currentYearRangeLabel = computed(
+      () => `Jan - ${monthLabels[getYearScopeMonthLimit() - 1]}`
+    );
+
     const activeRankingScopeCaption = computed(() => {
       const bankcode = userBankcode.value || "No bankcode";
-
-      if (activeRankingScope.value === "year") {
-        return `${bankcode} · ${currentYear.value}`;
-      }
-
-      if (activeRankingScope.value === "month") {
-        return `${bankcode} · ${monthLabels[selectedRankingMonth.value - 1]} ${currentYear.value}`;
-      }
-
-      return `${bankcode} · Today`;
+      return `${bankcode} · ${currentYearRangeLabel.value} ${currentYear.value}`;
     });
 
-    const monthlyChartLoadingLabel = computed(() => {
-      if (activeRankingScope.value === "year") {
-        return "Preparing yearly transfer ranking chart";
-      }
-
-      if (activeRankingScope.value === "month") {
-        return `Preparing ${monthLabels[selectedRankingMonth.value - 1]} transfer ranking chart`;
-      }
-
-      return "Preparing today's transfer ranking chart";
-    });
+    const monthlyChartLoadingLabel = computed(
+      () => `Preparing ${currentYearRangeLabel.value} transfer ranking chart`
+    );
 
     const hasRankingShape = (payload) =>
       Boolean(
@@ -1002,13 +968,7 @@ export default {
       const normalizedRows = Array.isArray(rows) ? rows : [];
 
       if (context.period === "year" && normalizedRows.some((row) => row.month > 0)) {
-        const baseRows = Array.from({ length: 12 }, (_, index) =>
-          createEmptyScopeRow({
-            label: monthLabels[index],
-            month: index + 1,
-            sortOrder: index + 1,
-          })
-        );
+        const baseRows = buildYearScopeBaseRows();
 
         normalizedRows.forEach((row) => {
           const monthIndex = row.month - 1;
@@ -1019,6 +979,10 @@ export default {
         });
 
         return baseRows;
+      }
+
+      if (context.period === "year" && !normalizedRows.length) {
+        return buildYearScopeBaseRows();
       }
 
       if (context.period === "month" && normalizedRows.some((row) => row.day > 0)) {
@@ -1130,6 +1094,50 @@ export default {
         window.requestAnimationFrame(() => resolve());
       });
 
+    const ensureMonthlyBarChartInstance = () => {
+      if (!monthlyBarChartRef.value) return null;
+
+      if (!monthlyBarChart) {
+        monthlyBarChart = echarts.init(monthlyBarChartRef.value);
+        bindMonthlyChartHoverEvents();
+      }
+
+      return monthlyBarChart;
+    };
+
+    const waitForMonthlyChartRenderSuccess = ({ timeoutMs = 2400 } = {}) =>
+      new Promise((resolve) => {
+        const chart = ensureMonthlyBarChartInstance();
+        if (!chart) {
+          resolve();
+          return;
+        }
+
+        let settled = false;
+        let timer = null;
+
+        const finish = () => {
+          if (settled) return;
+          settled = true;
+          chart.off("finished", onFinished);
+          if (timer) {
+            clearTimeout(timer);
+          }
+          waitForChartPaint().then(resolve);
+        };
+
+        const onFinished = () => finish();
+
+        chart.on("finished", onFinished);
+        timer = setTimeout(finish, timeoutMs);
+      });
+
+    const renderMonthlyChartAndWait = async (rows = [], context = monthlyChartContext) => {
+      const renderFinished = waitForMonthlyChartRenderSuccess();
+      renderMonthlyBarChart(rows, null, { context });
+      await renderFinished;
+    };
+
     const normalizeMonthlyRows = (rows = [], context = monthlyChartContext) =>
       buildScopeRowsFromNormalized(rows, context);
 
@@ -1163,7 +1171,9 @@ export default {
     const getRankingScopeCacheKey = (context = monthlyChartContext) =>
       buildCacheKey(
         "stacked-ranking-scope",
-        `${currentYear.value}:${context.period}:${context.month || "all"}:${context.bankcode || "unknown"}`
+        `${currentYear.value}:${context.period}:${
+          context.period === "year" ? "all" : context.month || "all"
+        }:${context.bankcode || "unknown"}`
       );
 
     const getRankingScopeTtlMs = (period) =>
@@ -1176,13 +1186,13 @@ export default {
     const buildRankingScopeRequest = (context = monthlyChartContext) => {
       if (context.period === "today") {
         return {
-          url: `${apiUrl}/transfer/ranked-bankcodes-today`,
+          url: `${apiBase2}/transfer/ranked-bankcodes-today`,
           params: {},
         };
       }
 
       return {
-        url: `${apiUrl}/transfer/ranked-bankcodes-by-year`,
+        url: `${apiBase2}/transfer/ranked-bankcodes-by-year`,
         params:
           context.period === "month" && context.month
             ? { month: context.month }
@@ -1267,6 +1277,153 @@ export default {
       totalCount: toSafeNumber(scopeData?.summary?.totalCount),
       totalAmount: toSafeNumber(scopeData?.summary?.totalAmount),
     });
+
+    const normalizeTransferTodaySummary = (summary = {}) => ({
+      totalCount: Math.max(0, toSafeNumber(summary?.totalCount)),
+      totalAmount: Math.max(0, toSafeNumber(summary?.totalAmount)),
+    });
+
+    const buildTransferTodaySnapshot = (scopeData = {}) => {
+      const now = new Date();
+      const summary = normalizeTransferTodaySummary(extractTransferTodaySummary(scopeData));
+      const rows = Array.isArray(scopeData?.rows) ? scopeData.rows : [];
+      const mergedRow = rows.reduce(
+        (accumulator, row) => mergeScopeRow(accumulator, row),
+        createEmptyScopeRow({
+          label: monthLabels[now.getMonth()],
+          month: now.getMonth() + 1,
+          day: now.getDate(),
+          sortOrder: now.getMonth() + 1,
+        })
+      );
+
+      return {
+        summary,
+        row: {
+          ...mergedRow,
+          label: monthLabels[now.getMonth()],
+          month: now.getMonth() + 1,
+          day: now.getDate(),
+          sortOrder: now.getMonth() + 1,
+          totalCount: summary.totalCount,
+          totalAmount: summary.totalAmount,
+        },
+      };
+    };
+
+    const applyLmpsTodayCardSnapshot = (snapshot = null) => {
+      lmpsTotalCount.value = Math.max(0, Math.round(toSafeNumber(snapshot?.summary?.totalCount)));
+      lmpsTotalAmount.value = Math.max(0, toSafeNumber(snapshot?.summary?.totalAmount));
+      lmpsTotalCountRank.value = toPositiveInteger(snapshot?.row?.rankTotalCount);
+      lmpsTotalAmountRank.value = toPositiveInteger(snapshot?.row?.rankTotalAmount);
+    };
+
+    const hasTransferTodaySnapshotChanged = (previousSnapshot = null, nextSnapshot = null) => {
+      if (!previousSnapshot && !nextSnapshot) return false;
+      if (!previousSnapshot || !nextSnapshot) return true;
+
+      return [
+        "totalCount",
+        "totalAmount",
+        "fromCount",
+        "toCount",
+        "fromAmount",
+        "toAmount",
+        "rankFromCount",
+        "rankToCount",
+        "rankTotalCount",
+        "rankFromAmount",
+        "rankToAmount",
+        "rankTotalAmount",
+      ].some(
+        (key) => toSafeNumber(previousSnapshot.row?.[key]) !== toSafeNumber(nextSnapshot.row?.[key])
+      );
+    };
+
+    const fetchLiveTransferTodaySnapshot = async (forceRefresh = true) => {
+      try {
+        const todayContext = getRankingScopeContext({ period: "today" });
+        if (!todayContext.bankcode) return null;
+
+        const todayScopeData = await fetchRankingScopeData(todayContext, forceRefresh);
+        return buildTransferTodaySnapshot(todayScopeData);
+      } catch (error) {
+        console.error("Error fetching live transfer today snapshot:", error);
+        return null;
+      }
+    };
+
+    const loadLmpsTodayCards = async ({ showLoading = false, forceRefresh = true } = {}) => {
+      if (showLoading) {
+        lmpsTodayCardsLoading.value = true;
+      }
+
+      try {
+        const snapshot = await fetchLiveTransferTodaySnapshot(forceRefresh);
+        if (snapshot) {
+          applyLmpsTodayCardSnapshot(snapshot);
+        }
+      } finally {
+        if (showLoading) {
+          lmpsTodayCardsLoading.value = false;
+        }
+      }
+    };
+
+    const mergeTodaySnapshotIntoYearScope = (scopeData = {}, todaySnapshot = null) => {
+      const currentMonth = getCurrentDisplayMonthNumber();
+      const baseRows =
+        Array.isArray(scopeData?.rows) && scopeData.rows.length
+          ? normalizeMonthlyRows(
+              scopeData.rows,
+              getRankingScopeContext({ period: "year", month: 0 })
+            )
+          : buildYearScopeBaseRows();
+      const rows = baseRows.map((row) => ({ ...row }));
+      const currentMonthRow =
+        rows[currentMonth - 1] ||
+        createEmptyScopeRow({
+          label: monthLabels[currentMonth - 1],
+          month: currentMonth,
+          sortOrder: currentMonth,
+        });
+
+      if (todaySnapshot?.row) {
+        const mergedCurrentMonthRow = mergeScopeRow(currentMonthRow, {
+          ...todaySnapshot.row,
+          label: monthLabels[currentMonth - 1],
+          month: currentMonth,
+          sortOrder: currentMonth,
+        });
+
+        [
+          "rankFromCount",
+          "rankToCount",
+          "rankTotalCount",
+          "rankFromAmount",
+          "rankToAmount",
+          "rankTotalAmount",
+        ].forEach((key) => {
+          const latestRank = toPositiveInteger(todaySnapshot.row?.[key]);
+          if (latestRank > 0) {
+            mergedCurrentMonthRow[key] = latestRank;
+          }
+        });
+
+        rows[currentMonth - 1] = {
+          ...mergedCurrentMonthRow,
+          label: monthLabels[currentMonth - 1],
+          month: currentMonth,
+          sortOrder: currentMonth,
+        };
+      }
+
+      return {
+        ...scopeData,
+        rows,
+        summary: buildScopeSummary(rows),
+      };
+    };
 
     const chartGradientCount = () =>
       new echarts.graphic.LinearGradient(0, 0, 0, 1, [
@@ -1397,10 +1554,7 @@ export default {
           buildFallbackScopeLabel(monthlyChartContext)
       );
 
-      if (!monthlyBarChart) {
-        monthlyBarChart = echarts.init(monthlyBarChartRef.value);
-        bindMonthlyChartHoverEvents();
-      }
+      ensureMonthlyBarChartInstance();
 
       monthlyBarChart.setOption(
         {
@@ -1653,7 +1807,7 @@ export default {
       );
     };
 
-    const animateMonthlyChartRows = (nextRows = [], context = monthlyChartContext) => {
+    const animateMonthlyChartRows = async (nextRows = [], context = monthlyChartContext) => {
       const normalizedNextRows = normalizeMonthlyRows(nextRows, context);
       const hasPreviousRows = hasMonthlyChartRows(monthlyChartRows);
       const isSameScope =
@@ -1661,7 +1815,9 @@ export default {
         Number(monthlyChartContext.month || 0) === Number(context.month || 0);
 
       if (!monthlyChartInitialized.value || !hasPreviousRows || !isSameScope) {
+        const renderFinished = waitForMonthlyChartRenderSuccess();
         renderMonthlyBarChart(normalizedNextRows, monthlyChartHoverIndex, { context });
+        await renderFinished;
         return;
       }
 
@@ -1669,22 +1825,26 @@ export default {
 
       const tweenState = { progress: 0 };
       const fromRows = normalizeMonthlyRows(monthlyChartRows, context);
-
-      monthlyChartTween = gsap.to(tweenState, {
-        progress: 1,
-        duration: 1.2,
-        ease: "power2.out",
-        onUpdate: () => {
-          renderMonthlyBarChart(
-            interpolateMonthlyRows(fromRows, normalizedNextRows, tweenState.progress, context),
-            monthlyChartHoverIndex,
-            { persistRows: false, context }
-          );
-        },
-        onComplete: () => {
-          renderMonthlyBarChart(normalizedNextRows, monthlyChartHoverIndex, { context });
-          monthlyChartTween = null;
-        },
+      await new Promise((resolve) => {
+        monthlyChartTween = gsap.to(tweenState, {
+          progress: 1,
+          duration: 1.2,
+          ease: "power2.out",
+          onUpdate: () => {
+            renderMonthlyBarChart(
+              interpolateMonthlyRows(fromRows, normalizedNextRows, tweenState.progress, context),
+              monthlyChartHoverIndex,
+              { persistRows: false, context }
+            );
+          },
+          onComplete: async () => {
+            const renderFinished = waitForMonthlyChartRenderSuccess();
+            renderMonthlyBarChart(normalizedNextRows, monthlyChartHoverIndex, { context });
+            await renderFinished;
+            monthlyChartTween = null;
+            resolve();
+          },
+        });
       });
     };
 
@@ -1857,7 +2017,7 @@ export default {
           applyRankingScopeSummary(previewScopeData);
           await nextTick();
           if (requestId !== monthlyChartRequestId) return;
-          renderMonthlyBarChart(previewScopeData.rows, null, { context });
+          await renderMonthlyChartAndWait(previewScopeData.rows, context);
           monthlyChartInitialized.value = true;
           hasRenderedCachedData = true;
           monthlyChartLoading.value = false;
@@ -1876,17 +2036,13 @@ export default {
         const rowsToRender = normalizeMonthlyRows(scopeData.rows, context);
 
         if (animate) {
-          animateMonthlyChartRows(rowsToRender, context);
+          await animateMonthlyChartRows(rowsToRender, context);
         } else {
-          renderMonthlyBarChart(rowsToRender, null, { context });
+          await renderMonthlyChartAndWait(rowsToRender, context);
         }
         monthlyChartError.value = "";
         monthlyChartInitialized.value = true;
         monthlyChartContext = context;
-        if (context.period === "today") {
-          lastTransferTodaySummary = extractTransferTodaySummary(scopeData);
-        }
-        await waitForChartPaint();
         if (requestId !== monthlyChartRequestId) return;
         monthlyChartLoading.value = false;
       } catch (error) {
@@ -1895,6 +2051,8 @@ export default {
           monthlyChartError.value =
             error.response?.data?.message || "Unable to load transfer ranking data.";
           monthlyChartInitialized.value = false;
+        } else {
+          monthlyChartLoading.value = false;
         }
       } finally {
         if (requestId === monthlyChartRequestId && !monthlyChartInitialized.value) {
@@ -1933,11 +2091,11 @@ export default {
           forceRefresh: !cached.isFresh,
           requestFn: async () => {
             const [inquiryRes, transferRes] = await Promise.all([
-              axios.get(`${apiUrl}/inquiry/daily-count`, {
+              axios.get(`${apiBase1}/inquiry/daily-count`, {
                 ...getAuthConfig(),
                 params: { bankcode },
               }),
-              axios.get(`${apiUrl}/transfer/daily-count`, {
+              axios.get(`${apiBase1}/transfer/daily-count`, {
                 ...getAuthConfig(),
                 params: { bankcode },
               }),
@@ -1984,74 +2142,56 @@ export default {
       }
     };
 
-    const primeTransferTodaySummary = async () => {
-      try {
-        const context = getRankingScopeContext({ period: "today" });
-        if (!context.bankcode) return null;
-
-        const cached = getCachedData(
-          getRankingScopeCacheKey(context),
-          getRankingScopeTtlMs("today")
-        );
-
-        if (cached.data) {
-          lastTransferTodaySummary = extractTransferTodaySummary(cached.data);
-        }
-
-        if (cached.isFresh && cached.data) {
-          return cached.data.summary;
-        }
-
-        const scopeData = await fetchRankingScopeData(context, !cached.isFresh);
-        lastTransferTodaySummary = extractTransferTodaySummary(scopeData);
-        return scopeData.summary;
-      } catch (error) {
-        console.error("Error priming transfer today summary:", error);
-        return null;
-      }
-    };
-
     const refreshTransferDashboardIfNeeded = async (options = {}) => {
-      const { showLoading = false, animate = true } = options;
+      const { animate = true } = options;
 
       try {
         const bankcode = userBankcode.value;
         if (!bankcode) return;
 
-        const previousTodaySummary = lastTransferTodaySummary;
-        const todayContext = getRankingScopeContext({ period: "today" });
-        const todayScopeData = await fetchRankingScopeData(todayContext, true);
-        const nextTodaySummary = extractTransferTodaySummary(todayScopeData);
-        const shouldRefreshYear =
-          !monthlyChartInitialized.value ||
-          !previousTodaySummary ||
-          nextTodaySummary.totalCount !== previousTodaySummary.totalCount ||
-          nextTodaySummary.totalAmount !== previousTodaySummary.totalAmount;
+        const latestTodaySnapshot = await fetchLiveTransferTodaySnapshot(true);
+        if (!latestTodaySnapshot) return;
+        applyLmpsTodayCardSnapshot(latestTodaySnapshot);
+        lmpsTodayCardsLoading.value = false;
 
-        if (activeRankingScope.value === "today") {
-          applyRankingScopeSummary(todayScopeData);
-          if (animate) {
-            animateMonthlyChartRows(todayScopeData.rows, todayContext);
-          } else {
-            renderMonthlyBarChart(todayScopeData.rows, null, { context: todayContext });
-          }
-          monthlyChartInitialized.value = true;
-          lastTransferTodaySummary = nextTodaySummary;
+        if (
+          lastTransferTodaySnapshot &&
+          !hasTransferTodaySnapshotChanged(lastTransferTodaySnapshot, latestTodaySnapshot)
+        ) {
           return;
         }
 
-        if (!shouldRefreshYear) {
-          lastTransferTodaySummary = nextTodaySummary;
-          return;
+        const yearContext = getRankingScopeContext({ period: "year", month: 0 });
+        const yearCacheKey = getRankingScopeCacheKey(yearContext);
+        const cachedYearScope = getCachedData(
+          yearCacheKey,
+          getRankingScopeTtlMs("year")
+        ).data;
+        const fallbackRows = normalizeMonthlyRows(monthlyChartRows, yearContext);
+        const baseYearScope =
+          cachedYearScope && Array.isArray(cachedYearScope.rows) && cachedYearScope.rows.length
+            ? cachedYearScope
+            : {
+                rows: fallbackRows,
+                summary: buildScopeSummary(fallbackRows),
+              };
+        const mergedYearScope = mergeTodaySnapshotIntoYearScope(
+          baseYearScope,
+          latestTodaySnapshot
+        );
+
+        applyRankingScopeSummary(mergedYearScope);
+        if (animate) {
+          animateMonthlyChartRows(mergedYearScope.rows, yearContext);
+        } else {
+          renderMonthlyBarChart(mergedYearScope.rows, null, { context: yearContext });
         }
-
-        await fetchMonthlyTransferScope({
-          forceRefresh: true,
-          showLoading,
-          animate,
-        });
-
-        lastTransferTodaySummary = nextTodaySummary;
+        monthlyChartError.value = "";
+        monthlyChartInitialized.value = true;
+        monthlyChartContext = yearContext;
+        monthlyChartLoading.value = false;
+        transferLoading.value = false;
+        lastTransferTodaySnapshot = latestTodaySnapshot;
       } catch (error) {
         console.error("Error refreshing transfer dashboard:", error);
       }
@@ -2072,27 +2212,9 @@ export default {
       scheduleMonthlyRealtimeRefresh();
     };
 
-    const handleRankingScopeChange = async (period) => {
-      if (!period || activeRankingScope.value === period) return;
+    const handleRankingScopeChange = async () => {};
 
-      activeRankingScope.value = period;
-      await fetchMonthlyTransferScope({
-        showLoading: true,
-        animate: true,
-        period,
-      });
-    };
-
-    const handleRankingMonthChange = async () => {
-      if (activeRankingScope.value !== "month") return;
-
-      await fetchMonthlyTransferScope({
-        showLoading: true,
-        animate: true,
-        period: "month",
-        month: selectedRankingMonth.value,
-      });
-    };
+    const handleRankingMonthChange = async () => {};
 
     const fetchTotalMembers = async () => {
       try {
@@ -2100,7 +2222,7 @@ export default {
         if (!bankcode) throw new Error("No bankcode found");
 
         const res = await axios.post(
-          `${apiUrl}/records/countByBankCode`,
+          `${apiBase1}/records/countByBankCode`,
           { bankcode },
           getAuthConfig()
         );
@@ -2118,7 +2240,7 @@ export default {
         if (!bankcode) return;
 
         const res = await axios.post(
-          `${apiUrl}/records/countInactiveByBankCode`,
+          `${apiBase1}/records/countInactiveByBankCode`,
           { bankcode },
           getAuthConfig()
         );
@@ -2175,7 +2297,7 @@ export default {
           forceRefresh: !cached.isFresh,
           requestFn: async () => {
             const res = await axios.get(
-              `${apiUrl}/records/count-member-merchants`,
+              `${apiBase1}/records/count-member-merchants`,
               getAuthConfig()
             );
             return Array.isArray(res.data) ? res.data : [];
@@ -2255,11 +2377,15 @@ export default {
       fetchTotalMerchantInactive();
       fetchMemberMerchants();
       fetchDailyCounts();
-      fetchMonthlyTransferScope({
-        period: "today",
+      const lmpsTodayCardsPromise = loadLmpsTodayCards({
+        showLoading: true,
+        forceRefresh: true,
       });
-      primeYearRankingScopeCache();
-      primeTransferTodaySummary();
+      await fetchMonthlyTransferScope({
+        period: "year",
+        month: 0,
+      });
+      await lmpsTodayCardsPromise;
 
       animateChartCards();
       window.addEventListener("resize", resizeCharts);
@@ -2279,6 +2405,11 @@ export default {
       totalInquiryTransaction,
       totalMerchantInactive,
       totalTransferTransaction,
+      lmpsTotalCount,
+      lmpsTotalAmount,
+      lmpsTotalCountRank,
+      lmpsTotalAmountRank,
+      lmpsTodayCardsLoading,
       dailyLineChartRef,
       pageViewOptions,
       pageViewSeries,
@@ -2296,12 +2427,14 @@ export default {
       activeRankingScope,
       selectedRankingMonth,
       activeRankingScopeLabel,
+      currentYearRangeLabel,
       activeRankingScopeCaption,
       monthlyChartLoadingLabel,
       handleRankingScopeChange,
       handleRankingMonthChange,
       formatCount,
       formatAmount,
+      formatRank,
     };
   },
 };

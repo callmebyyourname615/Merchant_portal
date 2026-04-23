@@ -173,9 +173,11 @@ import autoTable from "jspdf-autotable";
 import unorm from 'unorm';
 import phetsarathTTF from '@/assets/fonts/Phetsarath-Regular.ttf?url';
 import '@/assets/fonts/NotoSansLao.js';
+import { buildApiUrl } from '@/config/api';
 
 export default {
     setup() {
+        const apiUrl = buildApiUrl('/api', 'base1');
         const merchants = ref([]);
         const searchQuery = ref('');
         const currentPage = ref(1);
@@ -210,7 +212,6 @@ export default {
         }
 
         const fetchMerchants = async () => {
-            const apiUrl = import.meta.env.VITE_API_URL;
             if (!apiUrl) {
                 alert('API URL is not configured');
                 return;

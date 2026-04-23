@@ -75,6 +75,7 @@
 
 <script>
 import axios from "axios";
+import { buildApiUrl } from "@/config/api";
 import {
   clearQueuedMemberRankingOverlay,
   fetchMemberRankingOverlayState,
@@ -116,7 +117,8 @@ export default {
       try {
         this.isSubmitting = true;
         this.errorMsg = "";
-        const apiUrl = import.meta.env.VITE_API_URL;
+        const apiUrl = buildApiUrl("/api", "base1");
+        const rankingApiUrl = buildApiUrl("/api", "base2");
         if (!apiUrl) {
           this.errorMsg = "API URL is not configured";
           return;
@@ -149,9 +151,10 @@ export default {
 
         if (normalizedRole === "user") {
           const overlayState = await fetchMemberRankingOverlayState({
-            apiUrl,
+            apiUrl: rankingApiUrl,
             token: access_token,
             authProfile: response.data,
+            timeoutMs: 5000,
           });
 
           writeTransactionTodayRankingCardCache(bankcode || "", overlayState);

@@ -151,9 +151,11 @@
 <script>
 import axios from 'axios';
 import { ref, computed } from 'vue';
+import { buildApiUrl } from '@/config/api';
 
 export default {
     setup() {
+        const apiUrl = buildApiUrl('/api', 'base1');
         const merchants = ref([]); // Store all merchants
         const searchQuery = ref('');
         const currentPage = ref(1);
@@ -167,8 +169,6 @@ export default {
 
         // Fetch all merchants from API
         const fetchMerchants = async () => {
-
-            const apiUrl = import.meta.env.VITE_API_URL;
             if (!apiUrl) {
                 this.$toast.error('API URL is not configured');
                 return;

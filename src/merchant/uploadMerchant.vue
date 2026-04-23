@@ -163,7 +163,10 @@
 
 <script>
 import axios from "axios";
+import { buildApiUrl } from "@/config/api";
 import merchantTemplate from "@/assets/excel-file/Merchant_Info.xlsx?url"; // ✅ import Excel file path
+
+const apiUrl = buildApiUrl("/api", "base1");
 
 export default {
   data() {
@@ -229,7 +232,6 @@ export default {
     },
     async uploadFile() {
       if (!this.selectedFile) { this.showToast("error", "No file selected"); return; }
-      const apiUrl = import.meta.env.VITE_API_URL;
       if (!apiUrl) { this.showToast("error", "API URL is not configured"); return; }
       this.loading = true;
       const formData = new FormData();
@@ -247,7 +249,7 @@ export default {
     },
     async fetchProvinces() {
       try {
-        const res = await axios.get(`${import.meta.env.VITE_API_URL}/location`);
+        const res = await axios.get(`${apiUrl}/location`);
         this.provinces = res.data;
       } catch (error) { console.error("Failed to fetch provinces:", error); }
     },
@@ -255,14 +257,13 @@ export default {
       this.form.District = "";
       if (!this.form.Province) return;
       try {
-        const res = await axios.get(`${import.meta.env.VITE_API_URL}/location/${this.form.Province}/districts`);
+        const res = await axios.get(`${apiUrl}/location/${this.form.Province}/districts`);
         this.districts = res.data;
       } catch (error) { console.error("Failed to fetch districts:", error); }
     },
     async submitMerchant() {
       const requiredFields = ["merchantnameLa", "Province", "District", "Village", "status"];
       for (const field of requiredFields) { if (!this.form[field]) { this.showToast("error", `Please fill in ${field}`); return; } }
-      const apiUrl = import.meta.env.VITE_API_URL;
       if (!apiUrl) { this.showToast("error", "API URL is not configured"); return; }
 
       const provinceObj = this.provinces.find((p) => p.id === this.form.Province);

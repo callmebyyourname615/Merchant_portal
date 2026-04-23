@@ -143,6 +143,9 @@
 <script>
 import axios from 'axios';
 import { nextTick } from 'vue';
+import { buildApiUrl } from '@/config/api';
+
+const apiUrl = buildApiUrl('/api', 'base1');
 
 export default {
   data() {
@@ -194,7 +197,6 @@ export default {
       console.log('Form reset on mount:', this.form); // Debug form state
     },
     async fetchMembers() {
-      const apiUrl = import.meta.env.VITE_API_URL;
       if (!apiUrl) {
         this.showToast('API URL is not configured', 'error');
         return;
@@ -210,7 +212,6 @@ export default {
       }
     },
     async fetchUsers() {
-      const apiUrl = import.meta.env.VITE_API_URL;
       if (!apiUrl) {
         this.showToast('API URL is not configured', 'error');
         return;
@@ -233,7 +234,6 @@ export default {
         return;
       }
 
-      const apiUrl = import.meta.env.VITE_API_URL;
       if (!apiUrl) {
         this.showToast('API URL is not configured', 'error');
         return;

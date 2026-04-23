@@ -5,6 +5,7 @@ import router from '@/router'
 import Toast from 'vue-toastification'
 import 'vue-toastification/dist/index.css'
 import axios from 'axios'
+import { buildApiUrl } from '@/config/api'
 
 // Simple token helpers
 function saveTokens(access, refresh) {
@@ -32,6 +33,7 @@ let lastActivity = Date.now()
 
 const INACTIVITY_LIMIT = 10 * 60 * 1000 // 10 นาที
 const REFRESH_INTERVAL = 60 * 1000 // 1 นาที
+const apiUrl = buildApiUrl('/api', 'base1')
 
 function logout() {
   clearTokens()

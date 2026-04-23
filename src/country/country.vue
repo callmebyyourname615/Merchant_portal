@@ -90,6 +90,9 @@
 
 <script>
 import axios from 'axios';
+import { buildApiUrl } from '@/config/api';
+
+const apiUrl = buildApiUrl('/api', 'base1');
 
 export default {
   data() {
@@ -125,7 +128,6 @@ export default {
       }, 2500);
     },
     async fetchCountrys() {
-      const apiUrl = import.meta.env.VITE_API_URL;
       try {
         const response = await axios.get(`${apiUrl}/crossborder`);
         this.countrys = response.data;
@@ -143,7 +145,6 @@ export default {
         return;
       }
 
-      const apiUrl = import.meta.env.VITE_API_URL;
       if (!apiUrl) {
         this.showToast('API URL is not configured', 'error');
         return;

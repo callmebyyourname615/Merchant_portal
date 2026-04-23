@@ -182,6 +182,7 @@
 import { defineComponent, ref, computed } from 'vue';
 import axios from 'axios';
 import { useToast } from 'vue-toastification';
+import { buildApiUrl } from '@/config/api';
 
 interface MerchantData {
   merchantnameLa: string[];
@@ -221,6 +222,7 @@ export default defineComponent({
     const mappingLoading = ref(false);
     const detailedGroupData = ref<any[]>([]);
     const toast = useToast();
+    const apiUrl = buildApiUrl('/api', 'base1');
 
     const selectedGroup = ref<MerchantGroup | null>(null);
     const showDetailsModal = ref(false);
@@ -230,7 +232,6 @@ export default defineComponent({
     };
 
     const fetchMerchants = async () => {
-      const apiUrl = import.meta.env.VITE_API_URL;
       if (!apiUrl) {
         toast.error('API URL is not configured');
         loading.value = false;
@@ -356,7 +357,6 @@ export default defineComponent({
     };
 
     const mapGroup = async (groupIndex: number) => {
-      const apiUrl = import.meta.env.VITE_API_URL;
       const group = displayedMerchants.value[groupIndex];
       if (!group) return;
 
@@ -402,7 +402,6 @@ export default defineComponent({
       showDetailsModal.value = true;
       detailedGroupData.value = [];
       try {
-        const apiUrl = import.meta.env.VITE_API_URL;
         if (!apiUrl) {
           toast.error('API URL is not configured');
           return;

@@ -399,6 +399,7 @@ export const fetchMemberRankingOverlayState = async ({
   apiUrl = "/api",
   token = "",
   authProfile = null,
+  timeoutMs = 5000,
 } = {}) => {
   const bankCode = resolveStoredUserBankcode(authProfile);
   const emptyState = createEmptyMemberRankingOverlayData(bankCode);
@@ -413,6 +414,7 @@ export const fetchMemberRankingOverlayState = async ({
 
   try {
     const response = await axios.get(getMemberRankingTodayEndpoint(apiUrl), {
+      timeout: timeoutMs,
       ...(token
         ? {
             headers: {
@@ -450,11 +452,17 @@ export const fetchMemberRankingOverlayState = async ({
       statusMessage: "",
     });
   } catch (error) {
+    const timedOut =
+      error?.code === "ECONNABORTED" ||
+      String(error?.message || "").toLowerCase().includes("timeout");
+
     return buildMemberRankingOverlayState({
       viewState: "error",
       overlayData: emptyState,
       statusMessage:
-        error.response?.data?.message || "Unable to load the ranking overlay right now.",
+        timedOut
+          ? "Loading the ranking took too long. Please try again shortly."
+          : error.response?.data?.message || "Unable to load the ranking overlay right now.",
     });
   }
 };

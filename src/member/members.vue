@@ -166,6 +166,9 @@
 
 <script>
 import axios from "axios";
+import { buildApiUrl } from "@/config/api";
+
+const apiUrl = buildApiUrl("/api", "base1");
 
 export default {
   data() {
@@ -201,7 +204,6 @@ export default {
       }, 2500);
     },
     async fetchMembers() {
-      const apiUrl = import.meta.env.VITE_API_URL;
       try {
         const response = await axios.get(`${apiUrl}/members`);
         this.banks = response.data;
@@ -211,7 +213,6 @@ export default {
       }
     },
     async fetchCountries() {
-      const apiUrl = import.meta.env.VITE_API_URL;
       try {
         const response = await axios.get(`${apiUrl}/crossborder`);
         this.countries = response.data;
@@ -236,7 +237,6 @@ export default {
 
       
 
-      const apiUrl = import.meta.env.VITE_API_URL;
       try {
         if (this.editingMemberId) {
           // Update

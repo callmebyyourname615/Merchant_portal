@@ -192,6 +192,9 @@
 <script>
 import axios from 'axios';
 import { ref, computed, onMounted } from 'vue';
+import { buildApiUrl } from '@/config/api';
+
+const apiUrl = buildApiUrl('/api', 'base1');
 
 export default {
   setup() {
@@ -213,7 +216,6 @@ export default {
     };
 
     const fetchMerchants = async () => {
-      const apiUrl = import.meta.env.VITE_API_URL;
       if (!apiUrl) {
         console.error('API URL is not configured');
         return;
@@ -313,7 +315,6 @@ export default {
       if (!selectedMerchant.value) return;
 
       const { id, ...payload } = selectedMerchant.value;
-      const apiUrl = import.meta.env.VITE_API_URL;
       const token = localStorage.getItem('token');
 
       console.log('Saving merchant ID:', id);

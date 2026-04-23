@@ -245,6 +245,7 @@ import topAuthors from '@/data/home/topAuthors.json'
 import recentSales from '@/data/home/recentSales.json'
 import { ref, onMounted, computed } from 'vue'
 import axios from 'axios'
+import { buildApiUrl } from '@/config/api'
 
 export default {
   components: {
@@ -300,7 +301,7 @@ export default {
       tooltip: { enabled: true },
     })
 
-    const apiUrl = import.meta.env.VITE_API_URL || '/api'
+    const apiUrl = buildApiUrl('/api', 'base1')
 
     function formatMonthLabel(monthDayStr) {
       const [month, day] = monthDayStr.split('-')

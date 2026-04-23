@@ -1,6 +1,7 @@
 <script setup>
 import confetti from "canvas-confetti";
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { buildApiUrl } from "@/config/api";
 import {
   buildMemberRankingOverlayState,
   createEmptyMemberRankingOverlayData,
@@ -22,7 +23,7 @@ const props = defineProps({
 
 const emit = defineEmits(["close"]);
 
-const apiUrl = import.meta.env.VITE_API_URL || "/api";
+const apiUrl = buildApiUrl("/api", "base2");
 
 const viewState = ref("idle");
 const overlayData = ref(createEmptyMemberRankingOverlayData());
