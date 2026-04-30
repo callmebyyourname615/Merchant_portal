@@ -201,42 +201,81 @@
             :class="monthlyChartInitialized ? 'opacity-100' : 'opacity-0 pointer-events-none'"
           ></div>
           <div
-            v-if="monthlyChartLoading"
-            class="absolute inset-0 z-10 flex flex-col items-center justify-center bg-white/85 text-sm text-slate-500 backdrop-blur-sm"
+            v-if="monthlyChartLoading && !monthlyChartInitialized"
+            class="absolute inset-0 z-10 bg-white/90 p-5 backdrop-blur-sm sm:p-6"
           >
-            <div class="mb-5 flex items-end gap-2">
-              <span class="h-12 w-3 rounded-full bg-blue-200 animate-pulse"></span>
-              <span class="h-20 w-3 rounded-full bg-blue-500/80 animate-pulse [animation-delay:120ms]"></span>
-              <span class="h-14 w-3 rounded-full bg-amber-200 animate-pulse [animation-delay:220ms]"></span>
-              <span class="h-24 w-3 rounded-full bg-amber-500/80 animate-pulse [animation-delay:320ms]"></span>
-              <span class="h-10 w-3 rounded-full bg-slate-200 animate-pulse [animation-delay:420ms]"></span>
+            <div class="flex h-full flex-col">
+              <div class="flex items-center justify-between gap-4">
+                <div class="space-y-2">
+                  <div class="yearly-overview-shimmer h-3 w-40 rounded-full"></div>
+                  <div class="yearly-overview-shimmer h-3 w-28 rounded-full"></div>
+                </div>
+                <div class="yearly-overview-shimmer h-8 w-28 rounded-full"></div>
+              </div>
+              <div
+                class="mt-6 grid flex-1 items-end gap-2 sm:gap-3"
+                :style="{ gridTemplateColumns: `repeat(${getYearScopeMonthLimit()}, minmax(0, 1fr))` }"
+              >
+                <div
+                  v-for="(height, index) in yearlyOverviewSkeletonBars.slice(0, getYearScopeMonthLimit())"
+                  :key="`yearly-overview-skeleton-${index}`"
+                  class="yearly-overview-shimmer rounded-t-xl"
+                  :style="{ height: `${height}%` }"
+                ></div>
+              </div>
+              <div
+                class="mt-5 grid gap-3"
+                :style="{ gridTemplateColumns: `repeat(${getYearScopeMonthLimit()}, minmax(0, 1fr))` }"
+              >
+                <div
+                  v-for="month in getYearScopeMonthLimit()"
+                  :key="`yearly-overview-label-${month}`"
+                  class="yearly-overview-shimmer h-2 rounded-full"
+                ></div>
+              </div>
             </div>
-            <svg
-              class="mb-2 h-8 w-8 animate-spin text-indigo-500"
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24"
-            >
-              <circle
-                class="opacity-25"
-                cx="12"
-                cy="12"
-                r="10"
-                stroke="currentColor"
-                stroke-width="4"
-              ></circle>
-              <path
-                class="opacity-75"
-                fill="currentColor"
-                d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
-              ></path>
-            </svg>
-            <p class="font-medium text-slate-600">Loading total count & amount...</p>
-            <p class="mt-1 text-xs text-slate-400">{{ monthlyChartLoadingLabel }}</p>
+          </div>
+          <div
+            v-if="yearlyOverviewHasLoadingMonths"
+            class="pointer-events-none absolute inset-0 z-10 p-2"
+          >
+            <div class="relative h-full w-full">
+              <div
+                class="absolute bottom-[44px] left-[52px] right-[52px] top-[64px] grid items-end gap-2 sm:gap-3"
+                :style="{ gridTemplateColumns: `repeat(${getYearScopeMonthLimit()}, minmax(0, 1fr))` }"
+              >
+                <div
+                  v-for="month in getYearScopeMonthLimit()"
+                  :key="`yearly-overview-month-loading-bar-${month}`"
+                  class="relative h-full"
+                >
+                  <div
+                    v-if="isYearlyOverviewMonthLoading(month)"
+                    class="yearly-overview-shimmer absolute inset-x-[18%] bottom-0 rounded-t-xl opacity-95 shadow-[0_10px_24px_rgba(148,163,184,0.18)]"
+                    :style="{ height: `${yearlyOverviewSkeletonBars[(month - 1) % yearlyOverviewSkeletonBars.length]}%` }"
+                  ></div>
+                </div>
+              </div>
+              <div
+                class="absolute bottom-[24px] left-[52px] right-[52px] grid gap-2 sm:gap-3"
+                :style="{ gridTemplateColumns: `repeat(${getYearScopeMonthLimit()}, minmax(0, 1fr))` }"
+              >
+                <div
+                  v-for="month in getYearScopeMonthLimit()"
+                  :key="`yearly-overview-month-loading-label-${month}`"
+                  class="flex justify-center"
+                >
+                  <div
+                    v-if="isYearlyOverviewMonthLoading(month)"
+                    class="yearly-overview-shimmer h-1.5 w-8 rounded-full opacity-90"
+                  ></div>
+                </div>
+              </div>
+            </div>
           </div>
           <div
             v-else-if="!monthlyChartInitialized && monthlyChartError"
-            class="absolute inset-0 z-10 flex items-center justify-center bg-white/85 px-6 text-center text-sm text-red-500 backdrop-blur-sm"
+            class="absolute inset-0 z-10 flex items-center justify-center bg-white/85 px-6 text-center text-sm font-medium text-slate-500 backdrop-blur-sm"
           >
             {{ monthlyChartError }}
           </div>
@@ -326,6 +365,7 @@ import axios from "axios";
 import * as echarts from "echarts";
 import { gsap } from "gsap";
 import { buildApiUrl } from "@/config/api";
+import { useYearlyTransferRanking } from "@/composables/useYearlyTransferRanking";
 
 export default {
   components: {
@@ -357,6 +397,9 @@ export default {
 
     const apiBase1 = buildApiUrl("/api", "base1");
     const apiBase2 = buildApiUrl("/api", "base2");
+    const apiBase2Root =
+      (import.meta.env.VITE_API_BASE_2 || "").replace(/\/+$/, "") ||
+      apiBase2.replace(/\/api$/, "");
     const dailyLineChartRef = ref(null);
     const monthlyBarChartRef = ref(null);
     const currentYear = ref(new Date().getFullYear());
@@ -1147,6 +1190,21 @@ export default {
       const normalizedBankcode = normalizeBankcode(context.bankcode || userBankcode.value);
       const sourceRows = extractRankingRows(payload)
         .map((entry, index) => normalizeRankingEntry(entry, index))
+        .map((row) => {
+          if (context.period !== "year") {
+            return row;
+          }
+
+          const requestedMonth = toPositiveInteger(context.requestMonth || context.month);
+
+          return {
+            ...row,
+            bankCode: row.bankCode || normalizedBankcode,
+            bankName: row.bankName || normalizedBankcode || "Member Bank",
+            month: row.month || requestedMonth,
+            sortOrder: row.month || requestedMonth || row.sortOrder,
+          };
+        })
         .filter((row) => !normalizedBankcode || row.bankCode === normalizedBankcode)
         .map((row, index) => {
           if (context.period !== "year" || row.month > 0) {
@@ -1270,7 +1328,9 @@ export default {
       buildCacheKey(
         "stacked-ranking-scope",
         `${resolveSelectedRankingYear()}:${context.period}:${
-          context.period === "year" ? "all" : context.month || "all"
+          context.period === "year"
+            ? `ranked-by-year-post:${getYearScopeMonthLimit()}`
+            : context.month || "all"
         }:${context.bankcode || "unknown"}`
       );
 
@@ -1284,8 +1344,25 @@ export default {
     const buildRankingScopeRequest = (context = monthlyChartContext) => {
       if (context.period === "today") {
         return {
+          method: "post",
           url: `${apiBase2}/transfer/ranked-bankcodes-today`,
-          params: {},
+          data: {
+            bankcode: context.bankcode,
+          },
+        };
+      }
+
+      if (context.period === "year") {
+        const requestedMonth =
+          toPositiveInteger(context.requestMonth || context.month) || getYearScopeMonthLimit();
+
+        return {
+          method: "post",
+          url: `${apiBase2Root}/api/transfer/ranked-bankcodes-by-year`,
+          data: {
+            bankcode: context.bankcode,
+            month: requestedMonth,
+          },
         };
       }
 
@@ -1298,9 +1375,23 @@ export default {
       }
 
       return {
+        method: "get",
         url: `${apiBase2}/transfer/ranked-bankcodes-by-year`,
         params,
       };
+    };
+
+    const requestRankingScopeData = async (context = monthlyChartContext) => {
+      const request = buildRankingScopeRequest(context);
+      const response = await axios({
+        method: request.method || "get",
+        url: request.url,
+        ...getAuthConfig(),
+        params: request.params,
+        data: request.data,
+      });
+
+      return response.data;
     };
 
     const fetchRankingScopeData = async (context = monthlyChartContext, forceRefresh = false) => {
@@ -1311,16 +1402,46 @@ export default {
         ttlMs: getRankingScopeTtlMs(context.period),
         forceRefresh,
         requestFn: async () => {
-          const request = buildRankingScopeRequest(context);
-          const response = await axios.get(request.url, {
-            ...getAuthConfig(),
-            params: request.params,
-          });
-
-          return buildRankingScopeData(response.data, context);
+          const payload = await requestRankingScopeData(context);
+          return buildRankingScopeData(payload, context);
         },
       });
     };
+
+    const {
+      yearlyOverviewSkeletonBars,
+      yearlyOverviewHasLoadingMonths,
+      getYearScopeMonths,
+      setYearlyOverviewMonthLoading,
+      clearYearlyOverviewLoadingMonths,
+      isYearlyOverviewMonthLoading,
+      buildYearScopeDataFromMonthlyScopes,
+      readCachedYearlyRankingMonthScopes,
+      fetchYearlyRankingScopeDataProgressively,
+    } = useYearlyTransferRanking({
+      activeRankingScope,
+      monthlyChartLoading,
+      getYearScopeMonthLimit,
+      toPositiveInteger,
+      normalizeBankcode,
+      userBankcode,
+      resolveSelectedRankingYear,
+      buildCacheKey,
+      readCacheEntry,
+      getCachedData,
+      writeCacheEntry,
+      fetchWithCache,
+      yearlyRankingTtlMs,
+      monthLabels,
+      createEmptyScopeRow,
+      buildScopeSummary,
+      buildScopeRowsFromNormalized,
+      buildRankingScopeData,
+      requestRankingScopeData,
+      setCachedYearlyRankingScope,
+      getRankingScopeCacheKey,
+      getDefaultContext: () => monthlyChartContext,
+    });
 
     const deriveMonthScopeFromYearCache = (context = monthlyChartContext) => {
       if (context.period !== "month") return null;
@@ -2053,11 +2174,50 @@ export default {
       const requestId = ++monthlyChartRequestId;
       monthlyChartError.value = "";
       let hasRenderedCachedData = false;
+      let hasRenderedProgressData = false;
+
+      const renderScopeData = async (
+        scopeData = {},
+        context,
+        shouldAnimate = false,
+        renderOptions = {}
+      ) => {
+        if (requestId !== monthlyChartRequestId) return;
+
+        const { keepLoading = false } = renderOptions;
+
+        applyRankingScopeSummary(scopeData);
+        const rowsToRender = normalizeMonthlyRows(scopeData.rows, context);
+
+        await nextTick();
+        if (requestId !== monthlyChartRequestId) return;
+
+        if (shouldAnimate) {
+          await animateMonthlyChartRows(rowsToRender, context);
+        } else {
+          await renderMonthlyChartAndWait(rowsToRender, context);
+        }
+
+        if (requestId !== monthlyChartRequestId) return;
+
+        monthlyChartError.value = "";
+        monthlyChartInitialized.value = true;
+        monthlyChartContext = context;
+        monthlyChartLoading.value = keepLoading;
+      };
+
       try {
         const context = getRankingScopeContext({ period, month });
         if (!context.bankcode) {
-          monthlyChartError.value = "No bankcode found for this account.";
+          clearYearlyOverviewLoadingMonths();
+          monthlyChartError.value = "Unable to load yearly transaction data right now.";
           return;
+        }
+
+        if (context.period === "year") {
+          setYearlyOverviewMonthLoading(getYearScopeMonths(), true);
+        } else {
+          clearYearlyOverviewLoadingMonths();
         }
 
         const cacheKey = getRankingScopeCacheKey(context);
@@ -2069,54 +2229,84 @@ export default {
                 bankcode: context.bankcode,
               })
             : null;
-        const derivedScopeData = !cached.data ? deriveMonthScopeFromYearCache(context) : null;
-        const previewScopeData = cachedYearScopeData || cached.data || derivedScopeData;
+        const cachedYearMonthScopes =
+          context.period === "year" ? readCachedYearlyRankingMonthScopes(context) : [];
+        const cachedYearMonthScopeData = cachedYearMonthScopes.length
+          ? buildYearScopeDataFromMonthlyScopes(cachedYearMonthScopes, context)
+          : null;
+        const derivedScopeData =
+          context.period !== "year" && !cached.data ? deriveMonthScopeFromYearCache(context) : null;
+        const previewScopeData =
+          cachedYearScopeData || cached.data || cachedYearMonthScopeData || derivedScopeData;
 
         transferLoading.value = !hasMonthlyChartRows(previewScopeData?.rows);
 
         if (hasMonthlyChartRows(previewScopeData?.rows)) {
-          applyRankingScopeSummary(previewScopeData);
-          await nextTick();
+          await renderScopeData(previewScopeData, context, false, {
+            keepLoading: context.period === "year",
+          });
           if (requestId !== monthlyChartRequestId) return;
-          await renderMonthlyChartAndWait(previewScopeData.rows, context);
-          monthlyChartInitialized.value = true;
           hasRenderedCachedData = true;
-          monthlyChartLoading.value = false;
         } else if (showLoading || !monthlyChartInitialized.value) {
           monthlyChartLoading.value = true;
+          if (context.period === "year") {
+            await renderScopeData(
+              buildYearScopeDataFromMonthlyScopes([], context),
+              context,
+              false,
+              { keepLoading: true }
+            );
+            if (requestId !== monthlyChartRequestId) return;
+          }
         }
 
-        const scopeData = await fetchRankingScopeData(
-          context,
-          forceRefresh || !cached.isFresh || !cached.data
-        );
+        const scopeData =
+          context.period === "year"
+            ? await fetchYearlyRankingScopeDataProgressively(context, {
+                forceRefresh,
+                onProgress: async (progressScopeData, progress) => {
+                  if (requestId !== monthlyChartRequestId) return;
+
+                  setYearlyOverviewMonthLoading([progress?.month], false);
+                  if (progress?.isLast) return;
+
+                  await renderScopeData(
+                    progressScopeData,
+                    context,
+                    animate && (hasRenderedCachedData || hasRenderedProgressData || monthlyChartInitialized.value),
+                    { keepLoading: true }
+                  );
+                  hasRenderedProgressData = true;
+                },
+              })
+            : await fetchRankingScopeData(
+                context,
+                forceRefresh || !cached.isFresh || !cached.data
+              );
+
+        if (requestId !== monthlyChartRequestId) return;
+
         if (context.period === "year") {
+          clearYearlyOverviewLoadingMonths();
           setCachedYearlyRankingScope(scopeData, {
             year: resolveSelectedRankingYear(),
             bankcode: context.bankcode,
           });
         }
 
-        await nextTick();
-        if (requestId !== monthlyChartRequestId) return;
-        applyRankingScopeSummary(scopeData);
-        const rowsToRender = normalizeMonthlyRows(scopeData.rows, context);
-
-        if (animate) {
-          await animateMonthlyChartRows(rowsToRender, context);
-        } else {
-          await renderMonthlyChartAndWait(rowsToRender, context);
-        }
-        monthlyChartError.value = "";
-        monthlyChartInitialized.value = true;
-        monthlyChartContext = context;
-        if (requestId !== monthlyChartRequestId) return;
-        monthlyChartLoading.value = false;
+        await renderScopeData(
+          scopeData,
+          context,
+          animate && (hasRenderedCachedData || hasRenderedProgressData || monthlyChartInitialized.value)
+        );
       } catch (error) {
         if (requestId !== monthlyChartRequestId) return;
-        if (!hasRenderedCachedData) {
+        clearYearlyOverviewLoadingMonths();
+        if (!hasRenderedCachedData && !hasRenderedProgressData) {
           monthlyChartError.value =
-            error.response?.data?.message || "Unable to load transfer ranking data.";
+            error?.response?.data?.message ||
+            error?.message ||
+            "Unable to load yearly transaction data right now.";
           monthlyChartInitialized.value = false;
         } else {
           monthlyChartLoading.value = false;
@@ -2595,6 +2785,9 @@ export default {
       monthlyBarChartRef,
       currentYear,
       monthLabels,
+      yearlyOverviewSkeletonBars,
+      yearlyOverviewHasLoadingMonths,
+      isYearlyOverviewMonthLoading,
       rankingScopeOptions,
       activeRankingScope,
       selectedRankingMonth,
@@ -2602,6 +2795,7 @@ export default {
       currentYearRangeLabel,
       activeRankingScopeCaption,
       monthlyChartLoadingLabel,
+      getYearScopeMonthLimit,
       handleRankingScopeChange,
       handleRankingMonthChange,
       formatCount,
@@ -2611,3 +2805,31 @@ export default {
   },
 };
 </script>
+
+<style scoped>
+.yearly-overview-shimmer {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(90deg, #e2e8f0 0%, #f1f5f9 45%, #e2e8f0 100%);
+}
+
+.yearly-overview-shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.78) 50%,
+    transparent 100%
+  );
+  animation: yearly-overview-shimmer 1.35s infinite;
+}
+
+@keyframes yearly-overview-shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+</style>

@@ -259,7 +259,26 @@ export const normalizeRankingRows = (payload) => {
     }
   }
 
-  return [];
+  const hasRankingShape =
+    payload &&
+    typeof payload === "object" &&
+    (resolveEntryBankcode(payload) ||
+      resolveFirstValue(payload, [
+        ["totalCount"],
+        ["total_count"],
+        ["count"],
+        ["todayCount"],
+        ["transactionCount"],
+        ["transferCount"],
+        ["totalAmount"],
+        ["total_amount"],
+        ["amount"],
+        ["todayAmount"],
+        ["transactionAmount"],
+        ["transferAmount"],
+      ]) !== undefined);
+
+  return hasRankingShape ? [payload] : [];
 };
 
 export const normalizeMemberRankingEntry = (entry, index = 0) => {
@@ -413,16 +432,22 @@ export const fetchMemberRankingOverlayState = async ({
   }
 
   try {
-    const response = await axios.get(getMemberRankingTodayEndpoint(apiUrl), {
-      timeout: timeoutMs,
-      ...(token
-        ? {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          }
-        : {}),
-    });
+    const response = await axios.post(
+      getMemberRankingTodayEndpoint(apiUrl),
+      {
+        bankcode: bankCode,
+      },
+      {
+        timeout: timeoutMs,
+        ...(token
+          ? {
+              headers: {
+                Authorization: `Bearer ${token}`,
+              },
+            }
+          : {}),
+      }
+    );
 
     const rows = normalizeRankingRows(response.data).map((entry, index) =>
       normalizeMemberRankingEntry(entry, index)
