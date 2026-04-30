@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx vite *)",
+      "Bash(git -C /Users/macbookpro/Desktop/Merchant_Portal/Merchant_portal log --oneline -20 src/merchant/transaction.vue)",
+      "Bash(git -C /Users/macbookpro/Desktop/Merchant_Portal/Merchant_portal log -p --all -S \"renderMonthlyBarChart\" --since=\"60 days\" -- src/merchant/transaction.vue)",
+      "Read(//private/tmp/**)",
+      "Bash(pkill -f \"vite --port 5180\")"
+    ]
+  }
+}
