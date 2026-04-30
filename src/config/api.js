@@ -2,7 +2,7 @@ const trimTrailingSlash = (value = '') => value.replace(/\/+$/, '');
 
 export const API_BASES = {
   base1: trimTrailingSlash(import.meta.env.VITE_API_BASE_1 || 'http://175.11.0.122:5000'),
-  base2: trimTrailingSlash(import.meta.env.VITE_API_BASE_2 || 'http://175.11.0.122:5001'),
+  base2: trimTrailingSlash(import.meta.env.VITE_API_BASE_2 || 'http://175.11.0.122:3001'),
 };
 
 export const DEFAULT_API_BASE_KEY = 'base2';

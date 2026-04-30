@@ -375,7 +375,7 @@ export default {
   setup() {
     const transferLoading = ref(true);
     const chartLoading = ref(true);
-    const monthlyChartLoading = ref(true);
+    const monthlyChartLoading = ref(false);
     const monthlyChartInitialized = ref(false);
     const monthlyChartError = ref("");
     const activeRankingScope = ref("year");
@@ -397,19 +397,18 @@ export default {
 
     const apiBase1 = buildApiUrl("/api", "base1");
     const apiBase2 = buildApiUrl("/api", "base2");
-    const apiBase2Root =
-      (import.meta.env.VITE_API_BASE_2 || "").replace(/\/+$/, "") ||
-      apiBase2.replace(/\/api$/, "");
+    const apiBase2Root = apiBase2.replace(/\/api$/, "");
     const dailyLineChartRef = ref(null);
     const monthlyBarChartRef = ref(null);
     const currentYear = ref(new Date().getFullYear());
     const cachePrefix = "merchant-transaction-dashboard-v1";
-    const yearlyRankingTtlMs = 15 * 60 * 1000;
-    const monthlyScopeTtlMs = 10 * 60 * 1000;
-    const monthlyRealtimeRefreshMs = 30000;
-    const rankingTodayTtlMs = 30 * 1000;
-    const dailyCountsTtlMs = 2 * 60 * 1000;
-    const memberMerchantTtlMs = 5 * 60 * 1000;
+    const yearlyRankingTtlMs = 60 * 60 * 1000;
+    const monthlyScopeTtlMs = 30 * 60 * 1000;
+    const rankingTodayTtlMs = 5 * 60 * 1000;
+    const dailyCountsTtlMs = 10 * 60 * 1000;
+    const memberMerchantTtlMs = 30 * 60 * 1000;
+    const softAbortMs = 15000;
+    const yearlyRankingRequestTimeoutMs = 8 * 60 * 1000;
 
     let dailyLineChart = null;
     let monthlyBarChart = null;
@@ -506,6 +505,8 @@ export default {
       "rankings",
       "list",
       "payload",
+      "result",
+      "summary",
     ];
     const rankingBankcodePaths = [
       ["bankcode"],
@@ -526,6 +527,10 @@ export default {
       ["todayCount"],
       ["transactionCount"],
       ["transferCount"],
+      ["totalTransactionCount"],
+      ["totalTransferCount"],
+      ["lmpsTransactionCount"],
+      ["lmpsTotalCount"],
     ];
     const totalAmountPaths = [
       ["totalAmount"],
@@ -534,6 +539,10 @@ export default {
       ["todayAmount"],
       ["transactionAmount"],
       ["transferAmount"],
+      ["totalTransactionAmount"],
+      ["totalTransferAmount"],
+      ["lmpsTransactionAmount"],
+      ["lmpsTotalAmount"],
     ];
     const fromCountPaths = [
       ["fromCount"],
@@ -730,8 +739,29 @@ export default {
       return request;
     };
 
+    const createSoftAbortSignal = (timeoutMs = softAbortMs) => {
+      if (typeof AbortController === "undefined") {
+        return { signal: undefined, cancel: () => {} };
+      }
+
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+      return {
+        signal: controller.signal,
+        cancel: () => clearTimeout(timer),
+      };
+    };
+
+    const isCanceledRequest = (error) =>
+      error?.name === "CanceledError" ||
+      error?.code === "ERR_CANCELED" ||
+      axios.isCancel?.(error);
+
     const toSafeNumber = (value) => {
-      const num = Number(value);
+      const normalizedValue =
+        typeof value === "string" ? value.replace(/,/g, "").trim() : value;
+      const num = Number(normalizedValue);
       return Number.isFinite(num) ? num : 0;
     };
 
@@ -923,9 +953,19 @@ export default {
         }
 
         if (container && typeof container === "object") {
+          if (hasRankingShape(container)) {
+            return [container];
+          }
+
           for (const nestedKey of rankingRowContainers) {
             if (Array.isArray(container[nestedKey])) {
               return container[nestedKey];
+            }
+
+            if (container[nestedKey] && typeof container[nestedKey] === "object") {
+              if (hasRankingShape(container[nestedKey])) {
+                return [container[nestedKey]];
+              }
             }
           }
         }
@@ -1191,18 +1231,22 @@ export default {
       const sourceRows = extractRankingRows(payload)
         .map((entry, index) => normalizeRankingEntry(entry, index))
         .map((row) => {
+          const rowWithBankcode = {
+            ...row,
+            bankCode: row.bankCode || normalizedBankcode,
+            bankName: row.bankName || normalizedBankcode || "Member Bank",
+          };
+
           if (context.period !== "year") {
-            return row;
+            return rowWithBankcode;
           }
 
           const requestedMonth = toPositiveInteger(context.requestMonth || context.month);
 
           return {
-            ...row,
-            bankCode: row.bankCode || normalizedBankcode,
-            bankName: row.bankName || normalizedBankcode || "Member Bank",
-            month: row.month || requestedMonth,
-            sortOrder: row.month || requestedMonth || row.sortOrder,
+            ...rowWithBankcode,
+            month: rowWithBankcode.month || requestedMonth,
+            sortOrder: rowWithBankcode.month || requestedMonth || rowWithBankcode.sortOrder,
           };
         })
         .filter((row) => !normalizedBankcode || row.bankCode === normalizedBankcode)
@@ -1366,32 +1410,36 @@ export default {
         };
       }
 
-      const params = {
-        year: resolveSelectedRankingYear(),
-      };
-
-      if (context.period === "month" && context.month) {
-        params.month = context.month;
-      }
-
       return {
-        method: "get",
+        method: "post",
         url: `${apiBase2}/transfer/ranked-bankcodes-by-year`,
-        params,
+        data: {
+          bankcode: context.bankcode,
+          month: context.month,
+        },
       };
     };
 
     const requestRankingScopeData = async (context = monthlyChartContext) => {
       const request = buildRankingScopeRequest(context);
-      const response = await axios({
-        method: request.method || "get",
-        url: request.url,
-        ...getAuthConfig(),
-        params: request.params,
-        data: request.data,
-      });
+      const abort = createSoftAbortSignal(
+        context.period === "year" ? yearlyRankingRequestTimeoutMs : softAbortMs
+      );
 
-      return response.data;
+      try {
+        const response = await axios({
+          method: request.method || "get",
+          url: request.url,
+          ...getAuthConfig(),
+          signal: abort.signal,
+          params: request.params,
+          data: request.data,
+        });
+
+        return response.data;
+      } finally {
+        abort.cancel();
+      }
     };
 
     const fetchRankingScopeData = async (context = monthlyChartContext, forceRefresh = false) => {
@@ -1575,10 +1623,35 @@ export default {
         const todayContext = getRankingScopeContext({ period: "today" });
         if (!todayContext.bankcode) return null;
 
-        const todayScopeData = await fetchRankingScopeData(todayContext, forceRefresh);
+        const cacheKey = buildCacheKey("lmps-today-cards", todayContext.bankcode);
+        const todayScopeData = await fetchWithCache({
+          key: cacheKey,
+          ttlMs: rankingTodayTtlMs,
+          forceRefresh,
+          requestFn: async () => {
+            const abort = createSoftAbortSignal();
+
+            try {
+              const response = await axios.post(
+                `${apiBase2}/transfer/ranked-bankcodes-today`,
+                { bankcode: todayContext.bankcode },
+                {
+                  ...getAuthConfig(),
+                  signal: abort.signal,
+                }
+              );
+
+              return buildRankingScopeData(response.data, todayContext);
+            } finally {
+              abort.cancel();
+            }
+          },
+        });
         return buildTransferTodaySnapshot(todayScopeData);
       } catch (error) {
-        console.error("Error fetching live transfer today snapshot:", error);
+        if (!isCanceledRequest(error)) {
+          console.error("Error fetching live transfer today snapshot:", error);
+        }
         return null;
       }
     };
@@ -2137,19 +2210,6 @@ export default {
 
     const scheduleMonthlyRealtimeRefresh = () => {
       clearMonthlyRealtimeRefresh();
-
-      if (typeof document !== "undefined" && document.hidden) return;
-
-      monthlyRealtimeTimer = setTimeout(async () => {
-        try {
-          await refreshTransferDashboardIfNeeded({
-            showLoading: false,
-            animate: true,
-          });
-        } finally {
-          scheduleMonthlyRealtimeRefresh();
-        }
-      }, monthlyRealtimeRefreshMs);
     };
 
     const destroyCharts = () => {
@@ -2302,6 +2362,10 @@ export default {
       } catch (error) {
         if (requestId !== monthlyChartRequestId) return;
         clearYearlyOverviewLoadingMonths();
+        if (isCanceledRequest(error)) {
+          monthlyChartLoading.value = false;
+          return;
+        }
         if (!hasRenderedCachedData && !hasRenderedProgressData) {
           monthlyChartError.value =
             error?.response?.data?.message ||
@@ -2347,6 +2411,7 @@ export default {
         applyRankingScopeSummary(scopeData);
       } catch (error) {
         if (requestId !== yearlyOverviewSummaryRequestId) return;
+        if (isCanceledRequest(error)) return;
         console.error("Error fetching yearly overview monthly summary:", error);
       }
     };
@@ -2501,12 +2566,6 @@ export default {
         clearMonthlyRealtimeRefresh();
         return;
       }
-
-      refreshTransferDashboardIfNeeded({
-        showLoading: false,
-        animate: true,
-      });
-      scheduleMonthlyRealtimeRefresh();
     };
 
     const handleRankingScopeChange = async () => {
@@ -2742,17 +2801,19 @@ export default {
       fetchDailyCounts();
       const lmpsTodayCardsPromise = loadLmpsTodayCards({
         showLoading: true,
-        forceRefresh: true,
+        forceRefresh: false,
       });
-      await loadYearlyOverview({
+      loadYearlyOverview({
         showLoading: true,
+        animate: true,
+      }).catch((error) => {
+        console.error("Error loading yearly overview:", error);
       });
       await lmpsTodayCardsPromise;
 
       animateChartCards();
       window.addEventListener("resize", resizeCharts);
       document.addEventListener("visibilitychange", handleMonthlyChartVisibilityChange);
-      scheduleMonthlyRealtimeRefresh();
     });
 
     onBeforeUnmount(() => {
